@@ -1,0 +1,31 @@
+# Core
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+aiohttp==3.8.6
+
+# HTTP
+httpx==0.25.1
+requests==2.31.0
+
+# Templates
+jinja2==3.1.2
+
+# Utils
+python-dateutil==2.8.2
+pydantic==2.4.2
+pydantic-settings==2.0.3
+python-slugify==8.0.1
+
+# Async
+anyio==3.7.1
+asyncio==3.4.3
+aiofiles==23.2.1
+
+# Web
+websockets==11.0.3

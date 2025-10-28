@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ title }}{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-gray-100">
+    <!-- Navigation -->
+    <nav class="bg-red-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-utensils text-2xl"></i>
+                <span class="text-xl font-bold">{{ title }}</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                {% if session and session.auth_token %}
+                    <span class="hidden md:inline">Welcome!</span>
+                    <button id="logout-btn" class="bg-red-700 hover:bg-red-800 px-4 py-2 rounded-lg transition-colors">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                {% else %}
+                    <button id="login-btn" class="bg-white text-red-600 hover:bg-gray-100 px-4 py-2 rounded-lg font-medium transition-colors">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Login with Zomato
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-6 mt-8">
+        <div class="container mx-auto px-4 text-center">
+            <p>© {{ now.year }} {{ title }}. All rights reserved.</p>
+            <p class="text-gray-400 text-sm mt-2">Powered by Zomato MCP API</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        // CSRF token for AJAX requests
+        const csrfToken = "{{ csrf_token() if csrf_token else '' }}";
+        
+        // Base API URL
+        const API_BASE_URL = '/api';
+        
+        // Handle login/logout
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginBtn = document.getElementById('login-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+            
+            if (loginBtn) {
+                loginBtn.addEventListener('click', function() {
+                    window.location.href = '/auth/login';
+                });
+            }
+            
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', async function() {
+                    try {
+                        const response = await fetch('/auth/logout', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': csrfToken
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            window.location.href = '/';
+                        } else {
+                            const data = await response.json();
+                            alert(data.detail || 'Logout failed');
+                        }
+                    } catch (error) {
+                        console.error('Logout error:', error);
+                        alert('An error occurred during logout');
+                    }
+                });
+            }
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

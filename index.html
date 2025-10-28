@@ -1,0 +1,30 @@
+<button id="speak">🎤 Speak</button>
+<audio id="audio" controls></audio>
+<p id="reply"></p>
+
+<script>
+const btn = document.getElementById("speak");
+const audioEl = document.getElementById("audio");
+const replyEl = document.getElementById("reply");
+
+const recog = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recog.lang = "en-IN";
+
+btn.onclick = () => recog.start();
+
+recog.onresult = async (e) => {
+  const text = e.results[0][0].transcript;
+  replyEl.innerText = "You: " + text;
+
+  const res = await fetch("http://localhost:8000/chat", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ message: text, location: "Vadodara" })
+  });
+
+  const data = await res.json();
+  replyEl.innerText = "Bot: " + data.reply;
+  audioEl.src = data.audio_url;
+  audioEl.play();
+};
+</script>
