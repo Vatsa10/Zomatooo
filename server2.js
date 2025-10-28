@@ -1,4 +1,3 @@
-// gemini-food-ordering.js - MCP-Inspired Architecture with Gemini
 import express from 'express';
 import cors from 'cors';
 import { GoogleGenerativeAI } from '@google/generative-ai';
