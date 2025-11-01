@@ -424,8 +424,15 @@ const sessions = new Map();
 // ============================================
 
 app.post('/chat', async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { message, sessionId = `session_${Date.now()}` } = req.body;
+
+    console.log('\n' + '='.repeat(60));
+    console.log(`📨 New message from session: ${sessionId}`);
+    console.log(`💬 User: ${message}`);
+    console.log('='.repeat(60));
 
     if (!message) {
       return res.status(400).json({ error: 'Message required' });
@@ -453,7 +460,7 @@ Always confirm before placing orders.`;
 
     // Initialize Gemini with tools
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.0-flash',
       systemInstruction,
       tools: toolRegistry.getGeminiTools()
     });
@@ -471,6 +478,8 @@ Always confirm before placing orders.`;
     while (response.functionCalls?.length > 0 && callCount < maxCalls) {
       const functionCall = response.functionCalls[0];
       
+      console.log(`🔄 Function call: ${functionCall.name}`);
+      
       // Execute tool with context
       const context = {
         sessionId,
@@ -484,6 +493,8 @@ Always confirm before placing orders.`;
         context
       );
 
+      console.log(`✅ Tool result:`, JSON.stringify(toolResult).substring(0, 100));
+
       // Send result back to Gemini
       result = await chat.sendMessage([{
         functionResponse: {
@@ -496,7 +507,21 @@ Always confirm before placing orders.`;
       callCount++;
     }
 
-    const finalResponse = response.text();
+    // Get final text response
+    let finalResponse = '';
+    try {
+      finalResponse = response.text();
+    } catch (error) {
+      console.error('⚠️ No text in response, generating fallback');
+      // If no text response, create a summary
+      if (callCount > 0) {
+        finalResponse = 'I\'ve processed your request. Please let me know if you need any clarification or would like to proceed with your order.';
+      } else {
+        finalResponse = 'I\'m here to help you order food! Try asking me to search for restaurants, view menus, or place an order.';
+      }
+    }
+
+    console.log(`💬 Response: ${finalResponse.substring(0, 100)}...`);
 
     // Update history
     session.history.push(
@@ -511,11 +536,16 @@ Always confirm before placing orders.`;
     res.json({
       response: finalResponse,
       sessionId,
-      toolsUsed: callCount
+      toolsUsed: callCount,
+      processingTime: `${Date.now() - startTime}ms`
     });
+
+    console.log(`⏱️  Processed in ${Date.now() - startTime}ms`);
+    console.log('='.repeat(60) + '\n');
 
   } catch (error) {
     console.error('❌ Error:', error);
+    console.error('Stack:', error.stack);
     res.status(500).json({
       error: 'Request failed',
       details: error.message

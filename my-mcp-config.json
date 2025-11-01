@@ -1,0 +1,14 @@
+{
+  "models": {
+    "local-gemma3": {
+      "type": "chat",
+      "provider": "ollama",
+      "model": "gemma3:270m"
+    },
+    "local-qwen": {
+      "type": "chat",
+      "provider": "ollama",
+      "model": "qwen:0.5b"
+    }
+  }
+}

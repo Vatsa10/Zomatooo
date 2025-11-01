@@ -1,0 +1,125 @@
+# test.ps1 - PowerShell test script for Food Ordering System
+
+$API_URL = "http://localhost:3000"
+$SessionId = "test_$(Get-Date -Format 'yyyyMMddHHmmss')"
+
+function Send-ChatMessage {
+    param(
+        [string]$Message
+    )
+    
+    Write-Host "`n============================================================" -ForegroundColor Cyan
+    Write-Host "👤 You: $Message" -ForegroundColor Green
+    Write-Host "⏳ Processing..." -ForegroundColor Yellow
+    
+    $body = @{
+        message = $Message
+        sessionId = $SessionId
+    } | ConvertTo-Json
+    
+    try {
+        $response = Invoke-RestMethod -Uri "$API_URL/chat" `
+            -Method POST `
+            -Headers @{ "Content-Type" = "application/json" } `
+            -Body $body
+        
+        Write-Host "`n🤖 Assistant:" -ForegroundColor Magenta
+        Write-Host $response.response -ForegroundColor White
+        Write-Host "`n📊 Stats:" -ForegroundColor Yellow
+        Write-Host "   - Tools used: $($response.toolsUsed)" -ForegroundColor Gray
+        Write-Host "   - Processing time: $($response.processingTime)" -ForegroundColor Gray
+        Write-Host "   - Session: $($response.sessionId)" -ForegroundColor Gray
+        Write-Host "============================================================`n" -ForegroundColor Cyan
+        
+        return $response
+    }
+    catch {
+        Write-Host "`n❌ Error: $($_.Exception.Message)" -ForegroundColor Red
+        if ($_.ErrorDetails) {
+            Write-Host "   Details: $($_.ErrorDetails.Message)" -ForegroundColor Red
+        }
+        return $null
+    }
+}
+
+function Test-ServerHealth {
+    Write-Host "`n🏥 Checking server health..." -ForegroundColor Yellow
+    
+    try {
+        $response = Invoke-RestMethod -Uri "$API_URL/health" -Method GET
+        
+        Write-Host "✅ Server is healthy!" -ForegroundColor Green
+        Write-Host "   Status: $($response.status)" -ForegroundColor Gray
+        Write-Host "   Mode: $($response.mode)" -ForegroundColor Gray
+        Write-Host "   Tools: $($response.tools.Count) available" -ForegroundColor Gray
+        
+        return $true
+    }
+    catch {
+        Write-Host "❌ Server is not responding!" -ForegroundColor Red
+        Write-Host "   Please start the server with: node gemini-food-ordering.js" -ForegroundColor Yellow
+        return $false
+    }
+}
+
+function Get-AvailableTools {
+    try {
+        $response = Invoke-RestMethod -Uri "$API_URL/tools" -Method GET
+        
+        Write-Host "`n📋 Available Tools:" -ForegroundColor Cyan
+        $i = 1
+        foreach ($tool in $response.tools) {
+            Write-Host "`n$i. $($tool.name)" -ForegroundColor Yellow
+            Write-Host "   $($tool.description)" -ForegroundColor Gray
+            if ($tool.parameters.required) {
+                Write-Host "   Required: $($tool.parameters.required -join ', ')" -ForegroundColor DarkGray
+            }
+            $i++
+        }
+    }
+    catch {
+        Write-Host "❌ Could not list tools: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+# Main execution
+Write-Host @"
+🍕 ====================================================
+   Food Ordering System - Test Script
+🍕 ====================================================
+"@ -ForegroundColor Cyan
+
+# Check if server is running
+$isHealthy = Test-ServerHealth
+if (-not $isHealthy) {
+    exit 1
+}
+
+# List available tools
+Get-AvailableTools
+
+Write-Host "`n`n🧪 Starting conversation tests...`n" -ForegroundColor Cyan
+Start-Sleep -Seconds 1
+
+# Test 1: Search restaurants
+Send-ChatMessage "Find Gujarati restaurants in Vadodara"
+Start-Sleep -Seconds 2
+
+# Test 2: Get menu
+Send-ChatMessage "Show me the menu for Sev Usal House"
+Start-Sleep -Seconds 2
+
+# Test 3: Add to cart
+Send-ChatMessage "Add 2 Sev Usal to my cart"
+Start-Sleep -Seconds 2
+
+# Test 4: View cart
+Send-ChatMessage "What's in my cart?"
+Start-Sleep -Seconds 2
+
+# Test 5: General query
+Send-ChatMessage "What can you help me with?"
+
+Write-Host "`n✅ All tests completed!`n" -ForegroundColor Green
+Write-Host "💡 You can also run single queries like:" -ForegroundColor Yellow
+Write-Host '   .\test.ps1 -Message "Find pizza in Mumbai"' -ForegroundColor Gray
