@@ -2,13 +2,30 @@ import asyncio
 import os
 import json
 import re  # For simple city extraction
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 import google.generativeai as genai  # Gemini import
 
+# Pydantic Models
+class Restaurant(BaseModel):
+    res_id: int = Field(..., description="Unique identifier for the restaurant")
+    name: str = Field(..., description="Name of the restaurant")
+    rating: float = Field(..., description="Average rating of the restaurant")
+    votes: int = Field(..., description="Number of votes/ratings")
+    distance: float = Field(..., description="Distance from the user's location in km")
+    eta: str = Field(..., description="Estimated delivery time")
+    res_image: str = Field(..., description="URL of the restaurant's image")
+    res_offer: Optional[str] = Field(None, description="Any active offers")
+    serviceability_status: str = Field(..., description="Service availability status")
+
+class RestaurantSearchResponse(BaseModel):
+    results: List[Restaurant] = Field(..., description="List of restaurants matching the search")
+
 # Global state
-location_state = {"current_location": None, "addresses": [], "resolved": False, "phone_bound": False}
+location_state = {"current_location": None, "addresses": [], "resolved": False}
 cart_state = {"items": [], "restaurant_id": None}  # Simple cart tracking
 
 def mcp_schema_to_gemini(schema):
@@ -56,32 +73,6 @@ async def fetch_and_cache_addresses(session):
     except (json.JSONDecodeError, Exception) as e:
         print(f"Error parsing addresses: {e}. Will prompt for city.")
         location_state["resolved"] = False
-
-async def bind_phone_if_needed(session):
-    """Prompt and bind phone if not bound (for search/order)."""
-    if location_state["phone_bound"]:
-        return
-    phone_input = input("For orders, bind phone? Enter +91XXXXXXXXXX (or 'skip'): ").strip()
-    if phone_input.lower() == 'skip':
-        return
-    try:
-        # Call bind_user_number (assumes schema: country_code=91, phone)
-        bind_result = await session.call_tool(
-            name="bind_user_number",
-            arguments={"country_code": 91, "phone": phone_input.replace("+91", "")}
-        )
-        print(f"Bind result: {bind_result.content[0].text if bind_result.content else 'Sent OTP'}")
-        
-        otp = input("Enter OTP: ").strip()
-        verify_result = await session.call_tool(
-            name="bind_user_number_verify_code",
-            arguments={"otp": otp}
-        )
-        success = verify_result.content[0].text if verify_result.content else "Failed"
-        print(f"Verify: {success}")
-        location_state["phone_bound"] = "success" in success.lower()
-    except Exception as e:
-        print(f"Phone binding error: {e}")
 
 def extract_city_from_input(user_input):
     """Extract city from user message."""
@@ -133,9 +124,6 @@ async def main():
             await session.initialize()
             await fetch_and_cache_addresses(session)
             
-            # Optional: Bind phone at startup for better results
-            await bind_phone_if_needed(session)
-            
             tools_resp = await session.list_tools()
             tools = tools_resp.tools
             print(f"Connected to Zomato MCP. Available tools:\n" + "\n".join([f"- {t.name}: {t.description}" for t in tools]) + "\n")
@@ -183,7 +171,7 @@ async def main():
             else:
                 messages.append({"role": "model", "parts": ["No addresses. Say your city (e.g., 'in Vadodara') to start."]})
             
-            print("Food ordering chatbot ready! Type your query (e.g., 'Order pizza in Bangalore') or 'quit' to exit.")
+            print("Food ordering chatbot ready! Type your query (e.g., 'Order pizza near me') or 'quit' to exit.")
             
             while True:
                 user_input = input("\nYou: ").strip()
@@ -218,19 +206,49 @@ async def main():
                             try:
                                 tool_result = await session.call_tool(name=tool_call.name, arguments=modified_args)
                                 result_text = tool_result.content[0].text if tool_result.content else "Success."
-                                print(f"Tool {tool_call.name} result: {result_text[:200]}...")
+                                
+                                # Process restaurant search results
+                                if tool_call.name == "get_restaurants_for_keyword":
+                                    try:
+                                        # Parse and validate the response using Pydantic
+                                        search_data = json.loads(result_text)
+                                        restaurants = RestaurantSearchResponse(**search_data)
+                                        
+                                        # Format the output in a structured way
+                                        formatted_results = []
+                                        for i, restaurant in enumerate(restaurants.results, 1):
+                                            formatted_results.append(
+                                                f"{i}. {restaurant.name} ({restaurant.rating}⭐, {restaurant.distance}km, {restaurant.eta})"
+                                                f"\n   🏷️ {restaurant.votes} votes"
+                                                f"\n   🚚 {restaurant.serviceability_status}"
+                                                f"\n   🆔 ID: {restaurant.res_id}"
+                                            )
+                                            
+                                            if restaurant.res_offer:
+                                                formatted_results[-1] += f"\n   🎁 Special Offer: {restaurant.res_offer}"
+                                        
+                                        result_text = "\n\n".join(formatted_results) if formatted_results else "No restaurants found."
+                                        print(f"Found {len(restaurants.resments)} restaurants:")
+                                        print(result_text)
+                                        
+                                    except json.JSONDecodeError as e:
+                                        print(f"Error parsing restaurant data: {e}")
+                                    except Exception as e:
+                                        print(f"Error processing restaurant data: {e}")
                                 
                                 # If search empty, append fallback suggestion
                                 if "total_results\": 0" in result_text:
-                                    result_text += "\nFallback: Trying broader search..."
+                                    print("No results found. Trying a broader search...")
                                     # Auto-call get_all_restaurants if search failed
                                     fallback_result = await session.call_tool(
                                         name="get_all_restaurants",
                                         arguments={"user_location": location_state["current_location"]}
                                     )
-                                    result_text += f"\nAll restaurants: {fallback_result.content[0].text[:100]}..."
+                                    if fallback_result.content:
+                                        print("Here are some nearby restaurants:")
+                                        print(fallback_result.content[0].text[:200] + "...")
                             except Exception as e:
-                                result_text = f"Error: {str(e)}. Check phone binding or location."
+                                result_text = f"Error: {str(e)}. Please check your input and try again."
                             
                             messages.append({
                                 "role": "model",
